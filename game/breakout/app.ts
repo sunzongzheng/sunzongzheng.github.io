@@ -6,6 +6,14 @@ class Main {
         this.canvas = <HTMLCanvasElement> document.getElementById('canvas')
         this.ctx = this.canvas.getContext('2d')
     }
+
+    // 碰撞检测
+    intersects(bodyA, bodyB) {
+        return !(bodyA.x + bodyA.width < bodyB.x ||
+            bodyB.x + bodyB.width < bodyA.x ||
+            bodyA.y + bodyA.height < bodyB.y ||
+            bodyB.y + bodyB.height < bodyA.y)
+    }
 }
 
 class Img extends Main {
@@ -26,6 +34,13 @@ class Img extends Main {
         const img = new Image()
         img.src = path
         return img
+    }
+
+    draw() {
+        if (!this.img.complete) {
+            return
+        }
+        this.ctx.drawImage(this.img, this.x, this.y, this.width, this.height)
     }
 }
 
@@ -54,13 +69,6 @@ class Board extends Img {
             this.x = this.canvas.width - this.img.width
         }
     }
-
-    draw() {
-        if (!this.img.complete) {
-            return
-        }
-        this.ctx.drawImage(this.img, this.x, this.y, this.width, this.height)
-    }
 }
 
 class Ball extends Img {
@@ -69,7 +77,7 @@ class Ball extends Img {
         this.x = 0
         this.y = 0
         this.speedX = this.speedY = 8
-        this.width = this.height = 50
+        this.width = this.height = 35
     }
 
     move(board) {
@@ -81,32 +89,41 @@ class Ball extends Img {
         }
         // 碰撞时
         if (this.intersects(this, board)) {
-            this.speedY *= -1
+            this.collideHandle()
         }
         this.x += this.speedX
         this.y += this.speedY
     }
 
-    draw(board) {
-        if (!this.img.complete) {
-            return
-        }
-        this.move(board)
-        this.ctx.drawImage(this.img, this.x, this.y, this.width, this.height)
+    collideHandle() {
+        this.speedY *= -1
+    }
+}
+
+class Block extends Img {
+    isAlive: Boolean
+
+    constructor(path) {
+        super(path)
+        this.isAlive = true
+        this.width = 50
+        this.height = 12
     }
 
-    // 碰撞检测
-    intersects(bodyA, bodyB) {
-        return !(bodyA.x + bodyA.width < bodyB.x ||
-            bodyB.x + bodyB.width < bodyA.x ||
-            bodyA.y + bodyA.height < bodyB.y ||
-            bodyB.y + bodyB.height < bodyA.y)
+    juedeAlive(ball) {
+        // 碰撞时
+        if (this.intersects(this, ball)) {
+            this.isAlive = false
+            return true
+        }
+        return false
     }
 }
 
 class Game extends Main {
     board: Board
     ball: Ball
+    blocks: Array<Block>
     actions: Object
     keydowns: Object
 
@@ -114,12 +131,20 @@ class Game extends Main {
         super()
         this.board = new Board('./images/board.png')
         this.ball = new Ball('./images/ball.png')
+        this.blocks = []
+        for (let i = 0; i < 3; i++) {
+            const b = new Block('./images/block.png')
+            b.x = i * 150
+            b.y = 50
+            this.blocks.push(b)
+        }
         this.actions = {}
         this.keydowns = {}
-        // 左
+        // 左、w
         this.registerAction([65, 37], () => {
             this.board.moveLeft()
         })
+        // 右、d
         this.registerAction([68, 39], () => {
             this.board.moveRight()
         })
@@ -133,29 +158,46 @@ class Game extends Main {
     }
 
     // 注册按键事件
-    registerAction(key: any, func) {
-        switch (Object.prototype.toString.call(key)) {
-            case '[object Array]':
-                key.forEach(item => {
-                    this.actions[item] = func
-                })
-                break
-            case '[object String]':
-                this.actions[key] = func
-                break
-        }
+    registerAction(key: Array<number>, func) {
+        key.forEach(item => {
+            this.actions[item] = func
+        })
+    }
+
+    // 状态更新
+    update() {
+        this.ball.move(this.board)
+        this.blocks.forEach(item => {
+            if (item.isAlive && item.juedeAlive(this.ball)) {
+                this.ball.collideHandle()
+            }
+        })
+    }
+
+    // 绘制
+    draw() {
+        this.board.draw() // 挡板
+        this.ball.draw() // 球
+        this.blocks.forEach(item => { // 砖块
+            item.isAlive && item.draw()
+        })
+    }
+
+    // 事件处理
+    eventsHandle() {
+        Object.keys(this.keydowns).forEach(key => {
+            if (this.keydowns[key] && this.actions[key]) {
+                this.actions[key]()
+            }
+        })
     }
 
     run() {
         window.setInterval(() => {
+            this.update()
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-            this.board.draw()
-            this.ball.draw(this.board)
-            Object.keys(this.keydowns).forEach(key => {
-                if (this.keydowns[key] && this.actions[key]) {
-                    this.actions[key]()
-                }
-            })
+            this.eventsHandle()
+            this.draw()
         }, 1000 / 60)
     }
 }
